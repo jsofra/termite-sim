@@ -80,7 +80,7 @@
             (let [cell (get-in world loc)
                   woodchip (:woodchip @cell)
                   has-chip? (get termite :woodchip)
-                  nloc (loc-in-dir (world-dims world) loc (rand-int (count dirs)))
+                  nloc (loc-in-dir (world-dims world) loc (rand-int 4))
                   ncell (get-in world nloc)
                   {ntermite :termite nwoodchip :woodchip} @ncell]
               (Thread/sleep 40)
