@@ -1,13 +1,9 @@
 # termite-sim
 
-A Clojure library designed to ... well, that part is up to you.
+Termite simulation based on Rich Hickey's Ants demo.
+Shows of Clojure's STM, agents and refs.
 
-## Usage
+It implements a well know algorithm in Complex Systems research.
+The termites randomly walk around, pick up woodchips and drop them next to others.
 
-FIXME
-
-## License
-
-Copyright © 2013 FIXME
-
-Distributed under the Eclipse Public License, the same as Clojure.
+It is described here, http://www.toyproblems.org/probs/crr/
