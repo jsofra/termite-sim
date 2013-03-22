@@ -78,7 +78,7 @@
 (defn forage [world termite]
   (letfn [(inner-forage [loc]
             (let [cell (get-in world loc)
-                  woodchip (:woodchip @cell)
+                  {termite :termite woodchip :woodchip} @cell
                   has-chip? (get termite :woodchip)
                   nloc (loc-in-dir (world-dims world) loc (rand-int 4))
                   ncell (get-in world nloc)
