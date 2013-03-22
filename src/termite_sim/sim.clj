@@ -2,9 +2,6 @@
   (:use quil.core)
   (:use termite-sim.quil-utils))
 
-(def dim 80)
-(def running true)
-
 (defn world [w h]
   "Create a grid (nested vectors) of refs containing empty maps."
      (into [] (for [x (range w)]
@@ -36,18 +33,17 @@
       (let [loc (rand-world-loc world)]
         (create-termite world loc))))))
 
-(def dirs [[1 0] [0 1] [-1 0] [0 -1]])
-
-(defn neighbours [loc]
-  "Return the neighbouring locations to the given location."
-  (mapv #(mapv + loc %1) dirs))
-
 (defn loc-in-dir [dims loc dir]
-  (mapv mod (mapv + (dirs dir) loc) dims))
+  "Find a neighbouring locaion in one of four directions.
+   Confines the coordinate to a torus."
+  (let [dirs [[1 0] [0 1] [-1 0] [0 -1]]]
+    (mapv mod (mapv + (dirs dir) loc) dims)))
 
 ;; termite behaviour ;;
 
 (defn walk [world loc new-loc]
+  "Moves a termite from one cell to another.
+   Must run in a transaction."
   (let [dims (world-dims world)
         old-cell (get-in world loc)
         new-cell (get-in world new-loc)
@@ -57,6 +53,8 @@
     new-loc))
 
 (defn drop-chip [world loc]
+  "Moves a chip from the termite into the cell.
+   Must run in a transaction."
   (let [cell (get-in world loc)
         termite (:termite @cell)]
     (alter cell assoc :woodchip true)
@@ -64,6 +62,8 @@
     loc))
 
 (defn pickup-chip [world loc nloc]
+  "Moves a chip from a neighbouring cell into a termite.
+   Must run in a transaction."
   (let [cell (get-in world loc)
         ncell (get-in world nloc)
         termite (:termite @cell)]
@@ -78,42 +78,47 @@
 (defn forage [world termite]
   (letfn [(inner-forage [loc]
             (let [cell (get-in world loc)
-                  {termite :termite woodchip :woodchip} @cell
+                  woodchip (:woodchip @cell)
                   has-chip? (get termite :woodchip)
                   nloc (loc-in-dir (world-dims world) loc (rand-int (count dirs)))
                   ncell (get-in world nloc)
                   {ntermite :termite nwoodchip :woodchip} @ncell]
               (Thread/sleep 40)
               (dosync
-               (when running
-                 (cond
-                  (or (empty-cell? @ncell) (and (not ntermite) woodchip)) (walk world loc nloc)
-                  (and nwoodchip (not has-chip?) (not ntermite)) (pickup-chip world loc nloc)
-                  (and nwoodchip (not ntermite) has-chip?) (drop-chip world loc)
-                  :else loc)
-                 ))))]
+               (cond
+                (or (empty-cell? @ncell) (and (not ntermite) woodchip)) (walk world loc nloc)
+                (and nwoodchip (not has-chip?) (not ntermite)) (pickup-chip world loc nloc)
+                (and nwoodchip (not ntermite) has-chip?) (drop-chip world loc)
+                :else loc)
+               )))]
     (send-off termite inner-forage)))
 
 ;;; GUI ;;;
 
 (defn setup []
-  (let [sim-world (world dim dim)
+  (let [sim-world (world 80 80)
         termites (setup-world sim-world
                               :woodchips 250
                               :termites 50)]
     (set-state! :world sim-world
                 :termites termites)
+
+    ;; add watches to loop the termites
+    (dorun (map #(add-watch % :forage (fn [k term os ns]
+                                        (forage sim-world term))) termites))
+    ;; kill off the loops
+    (dorun (map #(forage sim-world %) termites))
+
     (smooth)
     (frame-rate 25)))
 
 (defn render-cell [cell loc]
   (with-translation loc
-    (let [col
-          (cond
-           (get-in cell [:termite :woodchip]) [255 0 0]
-           (:woodchip cell) [139 69 19]
-           (:termite cell) [173 255 47]
-           :else false)]
+    (let [col (cond
+               (get-in cell [:termite :woodchip]) [255 0 0]
+               (:woodchip cell) [139 69 19]
+               (:termite cell) [173 255 47]
+               :else false)]
       (when col
         (with-style
          {fill col}
@@ -121,12 +126,10 @@
 
 (defn draw []
   (let [sim-world (state :world)
+        [w h] (world-dims sim-world)
         termites (state :termites)
-        cells (dosync (into [] (for [x (range dim) y (range dim)]
+        cells (dosync (into [] (for [x (range w) y (range h)]
                                  [@(get-in sim-world [x y]) [(* 10 x) (* 10 y)]])))]
-
-    (dorun (map #(forage sim-world %) termites))
-
     (with-style
       {background [200]
        stroke [0 0 0]}
