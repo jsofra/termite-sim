@@ -75,22 +75,27 @@
   (let [{termite :termite woodchip :woodchip} cell]
     (not (or termite woodchip))))
 
+(defn forage-rules [cell ncell & {:keys [walk pickup drop stay]}]
+  (let [{{termite-chip :woodchip} :termite cell-chip :woodchip} cell
+        {ntermite :termite nwoodchip :woodchip} ncell]
+   (cond
+    (or (empty-cell? ncell) (and (not ntermite) cell-chip)) walk
+    (and nwoodchip (not termite-chip) (not ntermite)) pickup
+    (and nwoodchip (not ntermite) termite-chip) drop
+    :else stay)))
+
 (defn forage [world termite]
   (letfn [(inner-forage [loc]
             (let [cell (get-in world loc)
-                  {termite :termite woodchip :woodchip} @cell
-                  has-chip? (get termite :woodchip)
                   nloc (loc-in-dir (world-dims world) loc (rand-int 4))
-                  ncell (get-in world nloc)
-                  {ntermite :termite nwoodchip :woodchip} @ncell]
+                  ncell (get-in world nloc)]
               (Thread/sleep 40)
               (dosync
-               (cond
-                (or (empty-cell? @ncell) (and (not ntermite) woodchip)) (walk world loc nloc)
-                (and nwoodchip (not has-chip?) (not ntermite)) (pickup-chip world loc nloc)
-                (and nwoodchip (not ntermite) has-chip?) (drop-chip world loc)
-                :else loc)
-               )))]
+               ((forage-rules @cell @ncell
+                              :walk #(walk world loc nloc)
+                              :pickup #(pickup-chip world loc nloc)
+                              :drop #(drop-chip world loc)
+                              :stay (fn [] loc))))))]
     (send-off termite inner-forage)))
 
 ;;; GUI ;;;
@@ -98,15 +103,15 @@
 (defn setup []
   (let [sim-world (world 80 80)
         termites (setup-world sim-world
-                              :woodchips 250
-                              :termites 50)]
+                              :woodchips 500
+                              :termites 60)]
     (set-state! :world sim-world
                 :termites termites)
 
     ;; add watches to loop the termites
     (dorun (map #(add-watch % :forage (fn [k term os ns]
                                         (forage sim-world term))) termites))
-    ;; kill off the loops
+    ;; kick off the loops
     (dorun (map #(forage sim-world %) termites))
 
     (smooth)
@@ -116,8 +121,8 @@
   (with-translation loc
     (let [col (cond
                (get-in cell [:termite :woodchip]) [255 0 0]
-               (:woodchip cell) [139 69 19]
                (:termite cell) [173 255 47]
+               (:woodchip cell) [139 69 19]
                :else false)]
       (when col
         (with-style
